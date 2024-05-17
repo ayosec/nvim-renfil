@@ -28,6 +28,16 @@ function utils.assert_list_contains(target, items)
     end
 end
 
+--- Check if the message history contains the string.
+---
+---@param expected string
+function utils.assert_message(expected)
+    local messages = utils.messages_history()
+    if not messages:find(expected, 1, true) then
+        error("Missing " .. vim.inspect(expected) .. " in " .. vim.inspect(messages))
+    end
+end
+
 --- Simulate a one-shot channel to wait for a value in a background task.
 ---@generic T
 ---@return fun(T)
@@ -87,6 +97,22 @@ function utils.run_command(command, workdir)
     end
 
     return output
+end
+
+--- Get the message history
+---@return string
+function utils.messages_history()
+    local oldreg = vim.fn.getreg("a")
+    vim.cmd([[
+        redir @a
+        messages
+        redir END
+    ]])
+
+    local msg = vim.fn.getreg("a")
+    vim.fn.setreg("a", oldreg)
+
+    return msg
 end
 
 return utils
