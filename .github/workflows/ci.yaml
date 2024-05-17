@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        include:
+          - nvim: v0.9.5/nvim-linux64.tar.gz
+          - nvim: nightly/nvim-linux64.tar.gz
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v25
+
+      - name: Install Neovim
+        run: |
+          set -xe
+
+          # Neovim
+          mkdir -p .cache/neovim
+          curl -sL "https://github.com/neovim/neovim/releases/download/${{ matrix.nvim }}" \
+            | tar -xzf - --strip-components=1 -C .cache/neovim
+
+      - name: Run Tests
+        run: |
+          set -xe
+
+          PATH="$PWD/.cache/neovim/bin:$PATH"
+
+          nix develop --command make all
