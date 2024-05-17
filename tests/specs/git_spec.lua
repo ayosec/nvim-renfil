@@ -39,7 +39,7 @@ describe("Git", function()
         local bufnr = vim.fn.bufadd(repo.source)
         vim.fn.bufload(bufnr)
 
-        renfil.rename(config, bufnr, false, target, tx)
+        renfil.rename(config, bufnr, false, false, target, tx)
         rx()
 
         assert_eq(target, vim.api.nvim_buf_get_name(bufnr))
@@ -62,7 +62,7 @@ describe("Git", function()
         local bufnr = vim.fn.bufadd(repo.source)
         vim.fn.bufload(bufnr)
 
-        renfil.rename(config, bufnr, false, target, tx)
+        renfil.rename(config, bufnr, false, false, target, tx)
         rx()
 
         assert_eq(repo.source, vim.api.nvim_buf_get_name(bufnr))

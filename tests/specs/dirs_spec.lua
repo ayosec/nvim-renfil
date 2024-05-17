@@ -24,7 +24,45 @@ describe("Directories", function()
         local bufnr = vim.fn.bufadd(source)
         vim.fn.bufload(bufnr)
 
-        renfil.rename(config, bufnr, false, target_dir, tx)
+        renfil.rename(config, bufnr, false, false, target_dir, tx)
+        rx()
+
+        assert_eq(target, vim.api.nvim_buf_get_name(bufnr))
+        assert_eq(0, vim.fn.filereadable(source))
+        assert_eq({ "a", "b" }, vim.fn.readfile(target))
+    end)
+
+    it("create missing directories", function()
+        local tx, rx = testutils.oneshot()
+
+        local source = vim.fn.tempname()
+        local target = vim.fn.tempname() .. "/x"
+
+        vim.fn.writefile({ "a", "b" }, source)
+
+        local bufnr = vim.fn.bufadd(source)
+        vim.fn.bufload(bufnr)
+
+        renfil.rename(config, bufnr, true, false, target, tx)
+        rx()
+
+        assert_eq(target, vim.api.nvim_buf_get_name(bufnr))
+        assert_eq(0, vim.fn.filereadable(source))
+        assert_eq({ "a", "b" }, vim.fn.readfile(target))
+    end)
+
+    it("always create directories when ends with '/'", function()
+        local tx, rx = testutils.oneshot()
+
+        local source = vim.fn.tempname()
+        local target = vim.fn.tempname() .. "/" .. vim.fs.basename(source)
+
+        vim.fn.writefile({ "a", "b" }, source)
+
+        local bufnr = vim.fn.bufadd(source)
+        vim.fn.bufload(bufnr)
+
+        renfil.rename(config, bufnr, false, false, vim.fs.dirname(target) .. "/", tx)
         rx()
 
         assert_eq(target, vim.api.nvim_buf_get_name(bufnr))

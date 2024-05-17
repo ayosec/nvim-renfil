@@ -18,7 +18,7 @@ describe("Base", function()
         local bufnr = vim.fn.bufadd(source)
         vim.fn.bufload(bufnr)
 
-        renfil.rename(config, bufnr, false, target, tx)
+        renfil.rename(config, bufnr, false, false, target, tx)
         rx()
 
         assert_eq(target, vim.api.nvim_buf_get_name(bufnr))
@@ -38,7 +38,7 @@ describe("Base", function()
         local bufnr = vim.fn.bufadd(source)
         vim.fn.bufload(bufnr)
 
-        renfil.rename(config, bufnr, false, target, tx)
+        renfil.rename(config, bufnr, false, false, target, tx)
         rx()
 
         assert_eq(source, vim.api.nvim_buf_get_name(bufnr))
@@ -63,7 +63,7 @@ describe("Base", function()
         vim.fn.bufload(bufnr)
         vim.fn.bufload(bufnr_target)
 
-        renfil.rename(config, bufnr, true, target, tx)
+        renfil.rename(config, bufnr, false, true, target, tx)
         rx()
 
         assert_eq(target, vim.api.nvim_buf_get_name(bufnr))
@@ -84,7 +84,7 @@ describe("Base", function()
         local bufnr = vim.fn.bufadd(source)
         vim.fn.bufload(bufnr)
 
-        renfil.rename(config, bufnr, true, target, tx)
+        renfil.rename(config, bufnr, false, true, target, tx)
         rx()
 
         assert_eq(source, vim.api.nvim_buf_get_name(bufnr))

@@ -64,15 +64,9 @@ function M.setup(config)
     ---@type renfil.Config
     config = vim.tbl_deep_extend("force", {}, default_config, config or {})
 
-    local opts = {
-        nargs = "?",
-        bang = true,
-        complete = "file",
-        desc = "Rename the file of the current buffer.",
-    }
-
     local function callback(call_opts)
         local bufnr = vim.api.nvim_get_current_buf()
+        local create_dirs = false
         local overwrite = call_opts.bang
         local argument = call_opts.fargs[1]
 
@@ -87,10 +81,30 @@ function M.setup(config)
             filename = vim.fn.expandcmd(filename)
             filename = vim.fn.fnamemodify(filename, ":p")
             filename = vim.fn.simplify(filename)
-            M.rename(config, bufnr, overwrite, filename)
+            M.rename(config, bufnr, create_dirs, overwrite, filename)
         end
 
         if argument then
+            -- Extract options from the argument, similar to `:write`.
+            --
+            -- Currently, only `++p` is supported.
+
+            while true do
+                local _, _, opt, tail = argument:find("^%s*++(%S+)%s*(.*)")
+                if not opt then
+                    break
+                end
+
+                if opt == "p" then
+                    create_dirs = true
+                else
+                    vim.api.nvim_err_writeln("Invalid option: ++" .. opt)
+                    return
+                end
+
+                argument = tail
+            end
+
             do_rename(argument)
         else
             local cwd = vim.fn.getcwd() .. "/"
@@ -111,15 +125,21 @@ function M.setup(config)
         end
     end
 
-    vim.api.nvim_create_user_command(config.user_command, callback, opts)
+    vim.api.nvim_create_user_command(config.user_command, callback, {
+        nargs = "?",
+        bang = true,
+        complete = "file",
+        desc = "Rename the file of the current buffer.",
+    })
 end
 
 ---@param config renfil.Config
 ---@param bufnr integer
+---@param create_dirs boolean
 ---@param overwrite boolean
 ---@param target_path string
 ---@param on_complete nil|fun(success: boolean)
-function M.rename(config, bufnr, overwrite, target_path, on_complete)
+function M.rename(config, bufnr, create_dirs, overwrite, target_path, on_complete)
     local source_path = vim.api.nvim_buf_get_name(bufnr)
     target_path = vim.fn.fnamemodify(target_path, ":p")
 
@@ -131,12 +151,47 @@ function M.rename(config, bufnr, overwrite, target_path, on_complete)
         return
     end
 
-    if vim.fn.isdirectory(target_path) == 1 then
-        if target_path:sub(-1, -1) ~= "/" then
-            target_path = target_path .. "/"
-        end
+    local target_parent
+    local target_is_dir = false
 
+    if target_path:sub(-1, -1) == "/" then
+        -- If `target` ends with `/` (so it is a directory),
+        -- ensure that it created if missing.
+        create_dirs = true
+        target_is_dir = true
+    elseif vim.fn.isdirectory(target_path) == 1 then
+        target_path = target_path .. "/"
+        target_is_dir = true
+    end
+
+    if target_is_dir then
+        -- Append the original basename if target is a directory.
+        target_parent = target_path
         target_path = target_path .. vim.fs.basename(source_path)
+    else
+        target_parent = vim.fs.dirname(target_path)
+    end
+
+    if create_dirs and vim.fn.isdirectory(target_parent) ~= 1 then
+        local res = vim.fn.mkdir(target_parent, "p")
+
+        if res ~= 1 then
+            local msg = {
+                { "Unable to create directory " .. target_parent, "ErrorMsg" },
+            }
+
+            vim.api.nvim_echo(msg, true, {})
+
+            if on_complete then
+                on_complete(false)
+            end
+
+            return
+        end
+    end
+
+    local function rr()
+        regular_rename(bufnr, overwrite, source_path, target_path, on_complete)
     end
 
     if config.git and config.git ~= "" then
@@ -164,14 +219,14 @@ function M.rename(config, bufnr, overwrite, target_path, on_complete)
                     end
                 end)
             else
-                regular_rename(bufnr, overwrite, source_path, target_path, on_complete)
+                rr()
             end
         end)
 
         return
     end
 
-    regular_rename(bufnr, overwrite, source_path, target_path, on_complete)
+    rr()
 end
 
 return M
