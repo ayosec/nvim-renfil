@@ -84,6 +84,9 @@ function M.setup(config)
         end
 
         local function do_rename(filename)
+            filename = vim.fn.expandcmd(filename)
+            filename = vim.fn.fnamemodify(filename, ":p")
+            filename = vim.fn.simplify(filename)
             M.rename(config, bufnr, overwrite, filename)
         end
 
@@ -102,7 +105,7 @@ function M.setup(config)
                 completion = "file",
             }, function(input)
                 if input then
-                    do_rename(vim.fn.simplify(vim.fn.fnamemodify(input, ":p")))
+                    do_rename(input)
                 end
             end)
         end
@@ -129,7 +132,11 @@ function M.rename(config, bufnr, overwrite, target_path, on_complete)
     end
 
     if vim.fn.isdirectory(target_path) == 1 then
-        target_path = target_path .. "/" .. vim.fs.basename(source_path)
+        if target_path:sub(-1, -1) ~= "/" then
+            target_path = target_path .. "/"
+        end
+
+        target_path = target_path .. vim.fs.basename(source_path)
     end
 
     if config.git and config.git ~= "" then
