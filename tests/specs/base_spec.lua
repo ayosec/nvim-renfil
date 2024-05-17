@@ -2,6 +2,7 @@ local renfil = require("renfil")
 local testutils = require("tests.utils")
 
 local config = require("renfil.config").default_config()
+config.git = false
 
 ---@diagnostic disable-next-line:undefined-field
 local assert_eq = assert.are.same

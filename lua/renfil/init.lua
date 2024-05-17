@@ -1,5 +1,62 @@
 local M = {}
 
+---@param bufnr integer
+---@param path string
+local function update_buffer_names(bufnr, path)
+    -- Replace buffer name.
+    ---@diagnostic disable-next-line param-type-mismatch
+    local old_bufnr = vim.fn.bufnr(path)
+    if old_bufnr ~= -1 then
+        vim.api.nvim_buf_delete(old_bufnr, { force = true })
+    end
+
+    vim.api.nvim_buf_set_name(bufnr, vim.fn.fnamemodify(path, ":."))
+    vim.api.nvim_buf_call(bufnr, function()
+        vim.cmd("silent! write!")
+        vim.cmd.edit()
+    end)
+end
+
+---@param bufnr integer
+---@param overwrite boolean
+---@param source_path string
+---@param target_path string
+---@param on_complete nil|fun(success: boolean)
+local function regular_rename(bufnr, overwrite, source_path, target_path, on_complete)
+    if not overwrite then
+        -- Ideally, the rename should be done with `RENAME_NOREPLACE`,
+        -- but this is not available in Neovim.
+        if vim.loop.fs_stat(target_path) then
+            vim.api.nvim_err_writeln(target_path .. " already exists.")
+
+            if on_complete then
+                on_complete(false)
+            end
+
+            return
+        end
+    end
+
+    -- Use rename() since it can move files between devices (like tmpfs/ext4).
+    ---@diagnostic disable-next-line param-type-mismatch
+    local result = vim.fn.rename(source_path, target_path)
+    if result ~= 0 then
+        vim.api.nvim_err_writeln("Rename to " .. target_path .. " failed.")
+
+        if on_complete then
+            on_complete(false)
+        end
+
+        return
+    end
+
+    update_buffer_names(bufnr, target_path)
+
+    if on_complete then
+        on_complete(true)
+    end
+end
+
 ---@param config? renfil.Config
 function M.setup(config)
     local default_config = require("renfil.config").default_config()
@@ -19,15 +76,21 @@ function M.setup(config)
         local overwrite = call_opts.bang
         local argument = call_opts.fargs[1]
 
-        local function do_rename()
-            M.rename(config, bufnr, overwrite, argument)
+        local current_name = vim.api.nvim_buf_get_name(bufnr)
+
+        if vim.api.nvim_buf_get_option(bufnr, "buftype") ~= "" or vim.fn.filereadable(current_name) == 0 then
+            vim.api.nvim_err_writeln("The current buffer is not a file.")
+            return
+        end
+
+        local function do_rename(filename)
+            M.rename(config, bufnr, overwrite, filename)
         end
 
         if argument then
-            do_rename()
+            do_rename(argument)
         else
             local cwd = vim.fn.getcwd() .. "/"
-            local current_name = vim.api.nvim_buf_get_name(bufnr)
 
             if vim.startswith(current_name, cwd) then
                 current_name = current_name:sub(#cwd + 1)
@@ -39,8 +102,7 @@ function M.setup(config)
                 completion = "file",
             }, function(input)
                 if input then
-                    argument = vim.fn.simplify(vim.fn.fnamemodify(input, ":p"))
-                    do_rename()
+                    do_rename(vim.fn.simplify(vim.fn.fnamemodify(input, ":p")))
                 end
             end)
         end
@@ -53,43 +115,52 @@ end
 ---@param bufnr integer
 ---@param overwrite boolean
 ---@param target_path string
-function M.rename(config, bufnr, overwrite, target_path)
+---@param on_complete nil|fun(success: boolean)
+function M.rename(config, bufnr, overwrite, target_path, on_complete)
     local source_path = vim.api.nvim_buf_get_name(bufnr)
     target_path = vim.fn.fnamemodify(target_path, ":p")
 
     if source_path == target_path then
-        return
-    end
-
-    if not overwrite then
-        -- Ideally, the rename should be done with `RENAME_NOREPLACE`,
-        -- but this is not available in Neovim.
-        if vim.loop.fs_stat(target_path) then
-            vim.api.nvim_err_writeln(target_path .. " already exists.")
-            return
+        if on_complete then
+            on_complete(true)
         end
-    end
 
-    -- Use rename() since it can move files between devices (like tmpfs/ext4).
-    ---@diagnostic disable-next-line param-type-mismatch
-    local result = vim.fn.rename(source_path, target_path)
-    if result ~= 0 then
-        vim.api.nvim_err_writeln("Rename to " .. target_path .. " failed.")
         return
     end
 
-    -- Replace buffer name.
-    ---@diagnostic disable-next-line param-type-mismatch
-    local old_bufnr = vim.fn.bufnr(target_path)
-    if old_bufnr ~= -1 then
-        vim.api.nvim_buf_delete(old_bufnr, { force = true })
+    if config.git and config.git ~= "" then
+        -- If git integration is enabled, check if the file is in a git index.
+        -- In such case, use `git-mv` to rename it.
+
+        local git = require("renfil.git")
+        git.in_index(config.git, source_path, function(in_git)
+            if in_git then
+                git.rename(config.git, overwrite, source_path, target_path, function(success, stdout)
+                    if success then
+                        update_buffer_names(bufnr, target_path)
+                    else
+                        local msg = {
+                            { "[git-mv failed]", "ErrorMsg" },
+                            { " ", "Normal" },
+                            { stdout, "Normal" },
+                        }
+
+                        vim.api.nvim_echo(msg, true, {})
+                    end
+
+                    if on_complete then
+                        on_complete(success)
+                    end
+                end)
+            else
+                regular_rename(bufnr, overwrite, source_path, target_path, on_complete)
+            end
+        end)
+
+        return
     end
 
-    vim.api.nvim_buf_set_name(bufnr, vim.fn.fnamemodify(target_path, ":."))
-    vim.api.nvim_buf_call(bufnr, function()
-        vim.cmd("silent! write!")
-        vim.cmd.edit()
-    end)
+    regular_rename(bufnr, overwrite, source_path, target_path, on_complete)
 end
 
 return M
