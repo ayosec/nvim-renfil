@@ -128,6 +128,10 @@ function M.rename(config, bufnr, overwrite, target_path, on_complete)
         return
     end
 
+    if vim.fn.isdirectory(target_path) == 1 then
+        target_path = target_path .. "/" .. vim.fs.basename(source_path)
+    end
+
     if config.git and config.git ~= "" then
         -- If git integration is enabled, check if the file is in a git index.
         -- In such case, use `git-mv` to rename it.

@@ -2,13 +2,14 @@ local renfil = require("renfil")
 local testutils = require("tests.utils")
 
 local config = require("renfil.config").default_config()
-config.git = false
 
 ---@diagnostic disable-next-line:undefined-field
 local assert_eq = assert.are.same
 
 describe("Base", function()
     it("rename when target does not exist", function()
+        local tx, rx = testutils.oneshot()
+
         local source = vim.fn.tempname()
         local target = vim.fn.tempname()
 
@@ -17,7 +18,8 @@ describe("Base", function()
         local bufnr = vim.fn.bufadd(source)
         vim.fn.bufload(bufnr)
 
-        renfil.rename(config, bufnr, false, target)
+        renfil.rename(config, bufnr, false, target, tx)
+        rx()
 
         assert_eq(target, vim.api.nvim_buf_get_name(bufnr))
         assert_eq(0, vim.fn.filereadable(source))
@@ -25,6 +27,8 @@ describe("Base", function()
     end)
 
     it("don't overwrite target", function()
+        local tx, rx = testutils.oneshot()
+
         local source = vim.fn.tempname()
         local target = vim.fn.tempname()
 
@@ -34,7 +38,8 @@ describe("Base", function()
         local bufnr = vim.fn.bufadd(source)
         vim.fn.bufload(bufnr)
 
-        renfil.rename(config, bufnr, false, target)
+        renfil.rename(config, bufnr, false, target, tx)
+        rx()
 
         assert_eq(source, vim.api.nvim_buf_get_name(bufnr))
         assert_eq({ "a", "b" }, vim.fn.readfile(source))
@@ -44,6 +49,8 @@ describe("Base", function()
     end)
 
     it("overwrite target", function()
+        local tx, rx = testutils.oneshot()
+
         local source = vim.fn.tempname()
         local target = vim.fn.tempname()
 
@@ -56,7 +63,8 @@ describe("Base", function()
         vim.fn.bufload(bufnr)
         vim.fn.bufload(bufnr_target)
 
-        renfil.rename(config, bufnr, true, target)
+        renfil.rename(config, bufnr, true, target, tx)
+        rx()
 
         assert_eq(target, vim.api.nvim_buf_get_name(bufnr))
         assert_eq(0, vim.fn.filereadable(source))
@@ -66,6 +74,8 @@ describe("Base", function()
     end)
 
     it("failed rename", function()
+        local tx, rx = testutils.oneshot()
+
         local source = vim.fn.tempname()
         local target = vim.fn.tempname() .. "/bad"
 
@@ -74,7 +84,8 @@ describe("Base", function()
         local bufnr = vim.fn.bufadd(source)
         vim.fn.bufload(bufnr)
 
-        renfil.rename(config, bufnr, true, target)
+        renfil.rename(config, bufnr, true, target, tx)
+        rx()
 
         assert_eq(source, vim.api.nvim_buf_get_name(bufnr))
         assert_eq(1, vim.fn.filereadable(source))
