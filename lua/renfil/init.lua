@@ -73,7 +73,7 @@ local function parse_argument(bufnr, argument)
     --
     -- Currently, only `++p` is supported.
     while true do
-        local _, _, opt, tail = argument:find("^%s*++(%S+)%s*(.*)")
+        local _, _, opt, tail = argument:find("^%s*[+][+](%S+)%s*(.*)")
         if not opt then
             break
         end
@@ -181,7 +181,7 @@ local function command_preview(cmd_opts, preview_ns, preview_buf)
 
     if opts then
         local rp = require("renfil.preview")
-        return rp.preview(preview_ns, preview_buf, current_name, opts.target)
+        return rp.preview(preview_ns, preview_buf, current_name, opts.target, opts.create_dirs)
     end
 
     return 0
