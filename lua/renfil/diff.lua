@@ -7,6 +7,26 @@ M.PartKind = {
     Removed = "R",
 }
 
+---@param path string
+---@return string[]
+local function path_split(path)
+    local parts = {}
+    while path ~= "" do
+        local a, b, tail = path:match("^(%W*)(%w*)(.*)")
+        if a and a ~= "" then
+            table.insert(parts, a)
+        end
+
+        if b and b ~= "" then
+            table.insert(parts, b)
+        end
+
+        path = tail
+    end
+
+    return parts
+end
+
 ---@class renfil.diff.Part
 ---@field text string
 ---@field kind renfil.diff.PartKind
@@ -24,10 +44,11 @@ function M.paths_diff(source, target)
         }
     end
 
-    local source_parts = vim.split(source, "/")
-    local target_parts = vim.split(target, "/")
+    local source_parts = path_split(source)
+    local target_parts = path_split(target)
 
     local diff = vim.diff(table.concat(source_parts, "\n"), table.concat(target_parts, "\n"), {
+        algorithm = "minimal",
         ctxlen = math.max(#source_parts, #target_parts),
     })
 
@@ -40,7 +61,7 @@ function M.paths_diff(source, target)
 
         local function add(t, kind)
             if last and last.kind == kind then
-                last.text = last.text .. "/" .. t
+                last.text = last.text .. t
             else
                 table.insert(parts, { text = t, kind = kind })
             end
@@ -50,25 +71,11 @@ function M.paths_diff(source, target)
         local text = diff_line:sub(2)
 
         if prefix == " " then
-            if last and last.kind ~= M.PartKind.Common then
-                text = "/" .. text
-            end
-
             add(text, M.PartKind.Common)
-            last = nil
         elseif prefix == "-" then
             add(text, M.PartKind.Removed)
         elseif prefix == "+" then
             add(text, M.PartKind.Added)
-        else
-            last = nil
-        end
-
-        if last then
-            -- Slashes between fragments must appear in the `Common` ones.
-            if last.kind == M.PartKind.Common then
-                last.text = last.text .. "/"
-            end
         end
     end
 
