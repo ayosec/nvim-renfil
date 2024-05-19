@@ -216,7 +216,7 @@ function M.setup(config)
     vim.api.nvim_create_user_command(config.user_command, callback, {
         nargs = "?",
         bang = true,
-        complete = "file",
+        --complete = "file",        -- TODO https://github.com/neovim/neovim/issues/28851
         preview = command_preview,
         desc = "Rename the file of the current buffer.",
     })
