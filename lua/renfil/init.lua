@@ -3,11 +3,15 @@ local M = {}
 ---@param bufnr integer
 ---@param path string
 local function update_buffer_names(bufnr, path)
-    -- Replace buffer name.
-    ---@diagnostic disable-next-line param-type-mismatch
-    local old_bufnr = vim.fn.bufnr(path)
-    if old_bufnr ~= -1 then
-        vim.api.nvim_buf_delete(old_bufnr, { force = true })
+    -- Delete old buffers with the same name to avoid collisions.
+    for _, other_buf in pairs(vim.api.nvim_list_bufs()) do
+        if other_buf ~= bufnr then
+            local n = vim.api.nvim_buf_get_name(other_buf)
+            if n == path then
+                vim.api.nvim_buf_delete(other_buf, { force = true })
+                break
+            end
+        end
     end
 
     vim.api.nvim_buf_set_name(bufnr, vim.fn.fnamemodify(path, ":."))
@@ -57,6 +61,129 @@ local function regular_rename(bufnr, overwrite, source_path, target_path, on_com
     end
 end
 
+--- Compute the source and target for the rename command.
+---
+---@param bufnr integer
+---@param argument string
+---@return nil|{ create_dirs: boolean, target: string }
+local function parse_argument(bufnr, argument)
+    local create_dirs = argument:sub(-1) == "/"
+
+    -- Extract options from the argument, similar to `:write`.
+    --
+    -- Currently, only `++p` is supported.
+    while true do
+        local _, _, opt, tail = argument:find("^%s*++(%S+)%s*(.*)")
+        if not opt then
+            break
+        end
+
+        if opt == "p" then
+            create_dirs = true
+        else
+            vim.api.nvim_err_writeln("Invalid option: ++" .. opt)
+            return
+        end
+
+        argument = tail
+    end
+
+    local filename = vim.fn.expandcmd(argument)
+
+    if filename:sub(-1) == "/" then
+        local source = vim.api.nvim_buf_get_name(bufnr)
+        filename = filename .. vim.fs.basename(source)
+    end
+
+    filename = vim.fn.fnamemodify(filename, ":p")
+
+    return {
+        create_dirs = create_dirs,
+        target = vim.fn.simplify(filename),
+    }
+end
+
+---@param config renfil.Config
+---@param overwrite boolean
+---@param farg string?
+local function command_impl(config, overwrite, farg)
+    local bufnr = vim.api.nvim_get_current_buf()
+
+    local current_name = vim.api.nvim_buf_get_name(bufnr)
+
+    -- Reject non-file buffers.
+    if vim.api.nvim_buf_get_option(bufnr, "buftype") ~= "" then
+        vim.api.nvim_err_writeln("The current buffer is not a file.")
+        return
+    end
+
+    -- Reject buffers if the file is not on disk.
+    if vim.fn.filereadable(current_name) == 0 then
+        vim.api.nvim_err_writeln("The file for this buffer does not exist.")
+        return
+    end
+
+    local function do_rename(arg)
+        local opts = parse_argument(bufnr, arg)
+        if opts then
+            local function on_complete(success)
+                if not success then
+                    return
+                end
+
+                local diff = require("renfil.diff")
+                local from, to = diff.diff_message(current_name, opts.target)
+
+                local msg = { { "[Rename] ", "RenFilHeader" } }
+                vim.list_extend(msg, from)
+                table.insert(msg, { " → ", "RenFilArrow" })
+                vim.list_extend(msg, to)
+
+                vim.api.nvim_echo(msg, true, {})
+            end
+
+            M.rename(config, bufnr, opts.create_dirs, overwrite, opts.target, on_complete)
+        end
+    end
+
+    -- If present, use the command argument as the target,
+    -- or ask for it if missing.
+    if farg then
+        do_rename(farg)
+    else
+        local cwd = vim.fn.getcwd() .. "/"
+
+        if vim.startswith(current_name, cwd) then
+            current_name = current_name:sub(#cwd + 1)
+        end
+
+        vim.ui.input({
+            prompt = config.input_prompt,
+            default = current_name,
+            completion = "file",
+        }, function(input)
+            if input then
+                do_rename(input)
+            end
+        end)
+    end
+end
+
+local function set_default_hls()
+    local hls = {
+        RenFilArrow = { link = "Operator" },
+        RenFilHeader = { link = "Title" },
+        RenFilPathAdded = { fg = "green", ctermfg = 2 },
+        RenFilPathCommon = { link = "Normal" },
+        RenFilPathRemoved = { fg = "red", ctermfg = 1 },
+    }
+
+    for name, spec in pairs(hls) do
+        spec.default = true
+        vim.api.nvim_set_hl(0, name, spec)
+    end
+end
+
 ---@param config? renfil.Config
 function M.setup(config)
     local default_config = require("renfil.config").default_config()
@@ -65,64 +192,7 @@ function M.setup(config)
     config = vim.tbl_deep_extend("force", {}, default_config, config or {})
 
     local function callback(call_opts)
-        local bufnr = vim.api.nvim_get_current_buf()
-        local create_dirs = false
-        local overwrite = call_opts.bang
-        local argument = call_opts.fargs[1]
-
-        local current_name = vim.api.nvim_buf_get_name(bufnr)
-
-        if vim.api.nvim_buf_get_option(bufnr, "buftype") ~= "" or vim.fn.filereadable(current_name) == 0 then
-            vim.api.nvim_err_writeln("The current buffer is not a file.")
-            return
-        end
-
-        local function do_rename(filename)
-            filename = vim.fn.expandcmd(filename)
-            filename = vim.fn.fnamemodify(filename, ":p")
-            filename = vim.fn.simplify(filename)
-            M.rename(config, bufnr, create_dirs, overwrite, filename)
-        end
-
-        if argument then
-            -- Extract options from the argument, similar to `:write`.
-            --
-            -- Currently, only `++p` is supported.
-
-            while true do
-                local _, _, opt, tail = argument:find("^%s*++(%S+)%s*(.*)")
-                if not opt then
-                    break
-                end
-
-                if opt == "p" then
-                    create_dirs = true
-                else
-                    vim.api.nvim_err_writeln("Invalid option: ++" .. opt)
-                    return
-                end
-
-                argument = tail
-            end
-
-            do_rename(argument)
-        else
-            local cwd = vim.fn.getcwd() .. "/"
-
-            if vim.startswith(current_name, cwd) then
-                current_name = current_name:sub(#cwd + 1)
-            end
-
-            vim.ui.input({
-                prompt = config.input_prompt,
-                default = current_name,
-                completion = "file",
-            }, function(input)
-                if input then
-                    do_rename(input)
-                end
-            end)
-        end
+        command_impl(config, call_opts.bang, call_opts.fargs[1])
     end
 
     vim.api.nvim_create_user_command(config.user_command, callback, {
@@ -131,6 +201,8 @@ function M.setup(config)
         complete = "file",
         desc = "Rename the file of the current buffer.",
     })
+
+    set_default_hls()
 end
 
 ---@param config renfil.Config
@@ -154,7 +226,7 @@ function M.rename(config, bufnr, create_dirs, overwrite, target_path, on_complet
     local target_parent
     local target_is_dir = false
 
-    if target_path:sub(-1, -1) == "/" then
+    if target_path:sub(-1) == "/" then
         -- If `target` ends with `/` (so it is a directory),
         -- ensure that it created if missing.
         create_dirs = true
