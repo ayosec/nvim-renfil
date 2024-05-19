@@ -169,13 +169,31 @@ local function command_impl(config, overwrite, farg)
     end
 end
 
+local function command_preview(cmd_opts, preview_ns, preview_buf)
+    local arg = cmd_opts.fargs[1]
+    if not arg or not preview_buf then
+        return 0
+    end
+
+    local bufnr = vim.api.nvim_get_current_buf()
+    local current_name = vim.api.nvim_buf_get_name(bufnr)
+    local opts = parse_argument(bufnr, arg)
+
+    if opts then
+        local rp = require("renfil.preview")
+        return rp.preview(preview_ns, preview_buf, current_name, opts.target)
+    end
+
+    return 0
+end
+
 local function set_default_hls()
     local hls = {
         RenFilArrow = { link = "Operator" },
         RenFilHeader = { link = "Title" },
-        RenFilPathAdded = { fg = "green", ctermfg = 2 },
+        RenFilPathAdded = { link = "DiffAdd" },
         RenFilPathCommon = { link = "Normal" },
-        RenFilPathRemoved = { fg = "red", ctermfg = 1 },
+        RenFilPathRemoved = { link = "DiffDelete" },
     }
 
     for name, spec in pairs(hls) do
@@ -199,6 +217,7 @@ function M.setup(config)
         nargs = "?",
         bang = true,
         complete = "file",
+        preview = command_preview,
         desc = "Rename the file of the current buffer.",
     })
 
