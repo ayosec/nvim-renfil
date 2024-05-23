@@ -65,8 +65,9 @@ end
 ---
 ---@param bufnr integer
 ---@param argument string
+---@param extmods table<string, renfil.ExtMod>
 ---@return nil|{ create_dirs: boolean, target: string }
-local function parse_argument(bufnr, argument)
+local function parse_argument(bufnr, argument, extmods)
     local create_dirs = argument:sub(-1) == "/"
 
     -- Extract options from the argument, similar to `:write`.
@@ -88,10 +89,17 @@ local function parse_argument(bufnr, argument)
         argument = tail
     end
 
+    local source = vim.api.nvim_buf_get_name(bufnr)
+
+    local with_extmods = require("renfil.extmods").apply_extmods(extmods, argument, source)
+    if with_extmods then
+        argument = with_extmods
+        create_dirs = true
+    end
+
     local filename = vim.fn.expandcmd(argument)
 
     if filename:sub(-1) == "/" then
-        local source = vim.api.nvim_buf_get_name(bufnr)
         filename = filename .. vim.fs.basename(source)
     end
 
@@ -124,7 +132,7 @@ local function command_impl(config, overwrite, farg)
     end
 
     local function do_rename(arg)
-        local opts = parse_argument(bufnr, arg)
+        local opts = parse_argument(bufnr, arg, config.extmods)
         if opts then
             local function on_complete(success)
                 if not success then
@@ -169,7 +177,7 @@ local function command_impl(config, overwrite, farg)
     end
 end
 
-local function command_preview(cmd_opts, preview_ns, preview_buf)
+local function command_preview(config, cmd_opts, preview_ns, preview_buf)
     local arg = cmd_opts.fargs[1]
     if not arg or not preview_buf then
         return 0
@@ -177,7 +185,7 @@ local function command_preview(cmd_opts, preview_ns, preview_buf)
 
     local bufnr = vim.api.nvim_get_current_buf()
     local current_name = vim.api.nvim_buf_get_name(bufnr)
-    local opts = parse_argument(bufnr, arg)
+    local opts = parse_argument(bufnr, arg, config.extmods)
 
     if opts then
         local rp = require("renfil.preview")
@@ -206,18 +214,24 @@ end
 function M.setup(config)
     local default_config = require("renfil.config").default_config()
 
+    local default_extmods = { extmods = require("renfil.extmods").DEFAULT }
+
     ---@type renfil.Config
-    config = vim.tbl_deep_extend("force", {}, default_config, config or {})
+    config = vim.tbl_deep_extend("force", {}, default_config, default_extmods, config or {})
 
     local function callback(call_opts)
         command_impl(config, call_opts.bang, call_opts.fargs[1])
+    end
+
+    local function preview(cmd_opts, preview_ns, preview_buf)
+        return command_preview(config, cmd_opts, preview_ns, preview_buf)
     end
 
     vim.api.nvim_create_user_command(config.user_command, callback, {
         nargs = "?",
         bang = true,
         --complete = "file",        -- TODO https://github.com/neovim/neovim/issues/28851
-        preview = command_preview,
+        preview = preview,
         desc = "Rename the file of the current buffer.",
     })
 

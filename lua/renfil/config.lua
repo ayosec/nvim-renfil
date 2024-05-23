@@ -18,8 +18,19 @@ function M.default_config()
         ---
         ---@type string|false
         git = vim.fn.exepath("git"),
-    }
 
+        --- List of extended modifiers.
+        ---
+        --- Each key in the table is the prefix to invoke the extended
+        --- modifier (for example, `%>`). Its value is a function that
+        --- should return the modified value.
+        ---
+        --- The final list will contain the builtin modifiers from
+        --- `require("renfil.extmods").DEFAULT`
+        ---
+        ---@type table<string, renfil.ExtMod>
+        extmods = {},
+    }
     return opts
 end
 
