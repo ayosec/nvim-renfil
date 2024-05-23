@@ -264,11 +264,18 @@ function M.rename(config, bufnr, create_dirs, overwrite, target_path, on_complet
     end
 
     if create_dirs and vim.fn.isdirectory(target_parent) ~= 1 then
-        local res = vim.fn.mkdir(target_parent, "p")
+        local ok, res = pcall(vim.fn.mkdir, target_parent, "p")
+        local error = nil
 
-        if res ~= 1 then
+        if not ok then
+            error = res
+        elseif res ~= 1 then
+            error = "Unable to create directory " .. target_parent
+        end
+
+        if error then
             local msg = {
-                { "Unable to create directory " .. target_parent, "ErrorMsg" },
+                { error, "ErrorMsg" },
             }
 
             vim.api.nvim_echo(msg, true, {})
