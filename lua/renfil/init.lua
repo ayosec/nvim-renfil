@@ -140,11 +140,19 @@ local function command_impl(config, overwrite, farg)
                 end
 
                 local diff = require("renfil.diff")
-                local from, to = diff.diff_message(current_name, opts.target)
+                local from, to = diff.diff_message(current_name, opts.target, config.max_components_shared_prefix)
 
-                local msg = { { "[Rename] ", "RenFilHeader" } }
+                local msg = {
+                    { "Rename:", "RenFilHeader" },
+                    { " ← ", "RenFilArrow" },
+                }
+
                 vim.list_extend(msg, from)
-                table.insert(msg, { " → ", "RenFilArrow" })
+                vim.list_extend(msg, {
+                    { "\n", "Normal" },
+                    { string.rep(" ", #msg[1][1]), "RenFilHeader" },
+                    { " → ", "RenFilArrow" },
+                })
                 vim.list_extend(msg, to)
 
                 vim.api.nvim_echo(msg, true, {})
@@ -188,8 +196,14 @@ local function command_preview(config, cmd_opts, preview_ns, preview_buf)
     local opts = parse_argument(bufnr, arg, config.extmods)
 
     if opts then
-        local rp = require("renfil.preview")
-        return rp.preview(preview_ns, preview_buf, current_name, opts.target, opts.create_dirs)
+        return require("renfil.preview").preview(
+            preview_ns,
+            preview_buf,
+            current_name,
+            opts.target,
+            opts.create_dirs,
+            config.max_components_shared_prefix
+        )
     end
 
     return 0
@@ -202,6 +216,7 @@ local function set_default_hls()
         RenFilPathAdded = { link = "DiffAdd" },
         RenFilPathCommon = { link = "Normal" },
         RenFilPathRemoved = { link = "DiffDelete" },
+        RenFilSharedPrefix = { link = "Statement" },
     }
 
     for name, spec in pairs(hls) do

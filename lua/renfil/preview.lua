@@ -7,8 +7,9 @@ local Diff = require("renfil.diff")
 ---@param source string
 ---@param target string
 ---@param create_dirs boolean
-function M.preview(preview_ns, preview_buf, source, target, create_dirs)
-    local from, to = Diff.diff_message(source, target)
+---@param max_components_shared_prefix? integer
+function M.preview(preview_ns, preview_buf, source, target, create_dirs, max_components_shared_prefix)
+    local from, to = Diff.diff_message(source, target, max_components_shared_prefix)
 
     local lines = { "", "" }
     local highlights = {}

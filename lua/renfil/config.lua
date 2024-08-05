@@ -19,6 +19,15 @@ function M.default_config()
         ---@type string|false
         git = vim.fn.exepath("git"),
 
+        --- Maximum number of components in the shared prefix that can be
+        --- shown after renaming a file.
+        ---
+        --- If the shared prefix has more components, the excess is replaced
+        --- with an ellipsis (`…`).
+        ---
+        ---@type integer
+        max_components_shared_prefix = 5,
+
         --- List of extended modifiers.
         ---
         --- Each key in the table is the prefix to invoke the extended

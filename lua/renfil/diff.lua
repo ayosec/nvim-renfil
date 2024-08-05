@@ -82,16 +82,28 @@ function M.paths_diff(source, target)
     return parts
 end
 
+---@param path string
+---@param max_components integer
+---@return boolean
+---@return string
+local function shared_prefix(path, max_components)
+    local components = vim.split(path, "/")
+    local to_drop = #components - max_components
+    if to_drop < 1 then
+        return false, path
+    end
+
+    return true, table.concat(vim.list_slice(components, to_drop + 1), "/")
+end
+
 ---@param source string
 ---@param target string
+---@param max_components_shared_prefix? integer
 ---@return string[]
 ---@return string[]
-function M.diff_message(source, target)
-    local cwd = vim.fn.getcwd() .. "/"
-    if vim.startswith(source, cwd) and vim.startswith(target, cwd) then
-        source = source:sub(#cwd + 1)
-        target = target:sub(#cwd + 1)
-    end
+function M.diff_message(source, target, max_components_shared_prefix)
+    source = vim.fn.fnamemodify(source, ":p:.")
+    target = vim.fn.fnamemodify(target, ":p:.")
 
     local parts = M.paths_diff(source, target)
     local from, to = {}, {}
@@ -107,10 +119,22 @@ function M.diff_message(source, target)
         table.insert(list, { text, hl })
     end
 
-    for _, part in ipairs(parts) do
+    for idx, part in ipairs(parts) do
         if part.kind == M.PartKind.Common then
-            add(from, part.text, "RenFilPathCommon")
-            add(to, part.text, "RenFilPathCommon")
+            local text = part.text
+            if max_components_shared_prefix and idx == 1 then
+                local modified, common = shared_prefix(text, max_components_shared_prefix)
+                if modified then
+                    add(from, "…", "RenFilSharedPrefix")
+                    add(to, "…", "RenFilSharedPrefix")
+                    text = "/" .. common
+                else
+                    text = common
+                end
+            end
+
+            add(from, text, "RenFilPathCommon")
+            add(to, text, "RenFilPathCommon")
         elseif part.kind == M.PartKind.Added then
             add(to, part.text, "RenFilPathAdded")
         elseif part.kind == M.PartKind.Removed then
